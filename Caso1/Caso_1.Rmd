@@ -1,0 +1,1174 @@
+---
+title: "Caso de estudio 1"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    citation_package: natbib
+  html_document:
+    mathjax: default
+always_allow_html: true
+author:
+- "Camilo Alejandro Raba"
+- "Juan Andrés Camacho"
+header-includes:
+  - \usepackage{float}
+  - \usepackage{caption}
+  - \captionsetup[table]{position=bottom}
+  - \renewcommand{\tablename}{Tabla}
+  - \captionsetup{tablename=Tabla} 
+  - \captionsetup{figurename=Figura} 
+  - \setlength{\intextsep}{0pt} 
+  - \setlength{\abovecaptionskip}{5pt} 
+  - \setlength{\belowcaptionskip}{0pt} 
+lang: "es"
+date: "`r Sys.Date()`"
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Librerias necesarias
+
+library(readr)
+library(stringr)
+library(dplyr)
+library(knitr)
+library(ggplot2)
+library(sf)
+library(tidyr)
+library(mclust)
+library(gridExtra)
+library(ggpubr)
+library(kableExtra)
+library(networkD3)
+library(webshot2)
+library(htmlwidgets)
+
+#Carga de datos
+
+sb_2023=read.csv("SB11_20232_muestra.txt", sep = ";")
+sb_2022=read.csv("SB11_20222_muestra.txt", sep = ";")
+sb_2021=read.csv("SB11_20212_muestra.txt", sep = ";")
+sb_2020=read.csv("SB11_20202_muestra.txt", sep = ";")
+sb_2019=read.csv("SB11_20192_muestra.txt", sep = ";")
+sb_2018=read.csv("SB11_20182_muestra.txt", sep = ";")
+sb_2017=read.csv("SB11_20172_muestra.txt", sep = ";")
+sb_2016=read.csv("SB11_20162_muestra.txt", sep = ";")
+sb_2015=read.csv("SB11_20152_muestra.txt", sep = ";")
+
+departamentos <- data.frame(
+  Codigo = c(5, 8, 11, 13, 15, 17, 18, 19, 20, 23, 25, 27, 41, 44, 47, 50, 52, 54, 63, 66, 68, 70, 73, 76, 81, 85, 86, 88, 91, 94, 95, 97, 99),
+  Nombre = c("Antioquia", "Atlántico", "Bogotá, D.C.", "Bolívar", "Boyacá", "Caldas", "Caquetá", "Cauca", "Cesar", "Córdoba", 
+             "Cundinamarca", "Chocó", "Huila", "La Guajira", "Magdalena", "Meta", "Nariño", "Norte de Santander", 
+             "Quindío", "Risaralda", "Santander", "Sucre", "Tolima", "Valle del Cauca", "Arauca", "Casanare", "Putumayo", 
+             "San Andrés", "Amazonas", "Guainía", "Guaviare", "Vaupés", "Vichada")
+)
+
+#Convertir a factor 
+
+departamentos$Codigo=factor(departamentos$Codigo)
+
+sb_2023$ESTU_COD_RESIDE_DEPTO=factor(sb_2023$ESTU_COD_RESIDE_DEPTO, 
+                                        levels=unlist(departamentos$Codigo))
+
+sb_2022$ESTU_COD_RESIDE_DEPTO=factor(sb_2022$ESTU_COD_RESIDE_DEPTO, 
+                                        levels=unlist(departamentos$Codigo))
+
+sb_2021$ESTU_COD_RESIDE_DEPTO=factor(sb_2021$ESTU_COD_RESIDE_DEPTO, 
+                                        levels=unlist(departamentos$Codigo))
+
+sb_2020$ESTU_COD_RESIDE_DEPTO=factor(sb_2020$ESTU_COD_RESIDE_DEPTO, 
+                                        levels=unlist(departamentos$Codigo))
+
+sb_2019$ESTU_COD_RESIDE_DEPTO=factor(sb_2019$ESTU_COD_RESIDE_DEPTO, 
+                                        levels=unlist(departamentos$Codigo))
+
+sb_2018$ESTU_COD_RESIDE_DEPTO=factor(sb_2018$ESTU_COD_RESIDE_DEPTO, 
+                                     levels=unlist(departamentos$Codigo))
+
+
+sb_2017$ESTU_COD_RESIDE_DEPTO=factor(sb_2017$ESTU_COD_RESIDE_DEPTO, 
+                                     levels=unlist(departamentos$Codigo))
+
+sb_2016$ESTU_COD_RESIDE_DEPTO=factor(sb_2016$ESTU_COD_RESIDE_DEPTO, 
+                                     levels=unlist(departamentos$Codigo))
+
+sb_2015$ESTU_COD_RESIDE_DEPTO=factor(sb_2015$ESTU_COD_RESIDE_DEPTO, 
+                                     levels=unlist(departamentos$Codigo))
+
+#Funciones
+
+est_suf=function(dataframe){
+  a=dataframe%>%
+    filter(!is.na(ESTU_COD_RESIDE_DEPTO))%>%
+    group_by(ESTU_COD_RESIDE_DEPTO)%>%
+    summarise(yb=mean(PUNT_MATEMATICAS), s2=var(PUNT_MATEMATICAS), n=n())%>%
+    complete(ESTU_COD_RESIDE_DEPTO = departamentos$Codigo, fill = list(yb = 0, s2 = 0, n = 0)) %>%
+    arrange(ESTU_COD_RESIDE_DEPTO)%>%as.data.frame()
+  return(list(
+    yb = a$yb,
+    s2 = a$s2,
+    nt = a$n
+  ))
+} #Est. suficientes
+
+MC=function(yb,s2,n, dep=NULL){
+  valid_indices <- which(n > 0)
+  yb <- yb[valid_indices]
+  s2 <- s2[valid_indices]
+  n <- n[valid_indices]
+  m=length(yb)
+  kn  <- k0 + n
+  nun <- nu0 + n
+  mun <- (k0/kn)*mu0 + (n/kn)*yb
+  s2n <- (nu0*s20 +(n-1)*s2 + k0*n*(yb-mu0)^2/kn)/nun
+  
+  sigma2 <- 1/rgamma(n = B*m, shape = rep(nun/2,B), rate = rep(nun*s2n/2,B))
+  theta  <- rnorm(n = B*m, mean = rep(mun,B), sd = (sqrt(sigma2/kn)))
+  theta <- matrix(theta,ncol = m, byrow = TRUE)
+  sigma2 <- matrix(sigma2,ncol = m, byrow = TRUE)
+  if (is.null(dep)) {
+    # Caso 1: Usar todos los códigos disponibles
+    colnames(theta) <- departamentos$Codigo[valid_indices] # Números secuenciales si no hay datos
+    colnames(sigma2) <- departamentos$Codigo[valid_indices]
+  } else {
+    # Caso 2: Usar los códigos proporcionados
+    if (length(dep) != m) {
+      stop("El número de códigos proporcionados no coincide con el número de columnas.")
+    }
+    colnames(theta) <- dep
+    colnames(sigma2) <- dep
+  }
+  return(list(
+    theta=theta,
+    sigma2=sigma2))
+} #Montecarlo
+
+Inferencia=function(a){
+  estpunt=mean(a)
+  cv=sqrt(var(a))/abs(mean(a))
+  li=quantile(a,.025)
+  ls=quantile(a,.975)
+  return(t(c(estpunt,cv,li,ls)))
+} #Estimacion, cv e intervalos
+
+clust=function(theta, sigma2 , n.clust){
+  if (!all(dim(theta) == dim(sigma2))) {
+    stop("Las matrices 'theta' y 'sigma2' deben tener las mismas dimensiones.")
+  }
+  
+  # Inicializar una lista para almacenar los clusters
+  Omega <- vector("list", nrow(sigma2))
+  
+  # Iterar por cada fila
+  for (i in 1:nrow(sigma2)) {
+    b <- cbind(t(theta[i, ]),t(sigma2[i, ]))  # Combinar theta y sigma2 por fila
+    Omega[[i]] <- kmeans(b, centers = n.clust)$cluster  # Almacenar los clusters
+  }
+  
+  return(Omega)  # Retornar la lista de clusters
+}
+  
+  
+ #K means
+
+top_punt=function(matriz, n, criterio){
+  if (criterio=="mejores"){
+    a=t(apply(matriz,2, Inferencia))
+    a=as.data.frame(a)
+    a=a%>%arrange(desc(V1))%>%head(n)
+    a=cbind(a,cod=factor(row.names(a)))
+    dptos=a%>%inner_join(departamentos, by=c("cod"="Codigo"))%>%select(Nombre)
+    rownames(a)=unlist(dptos)
+    a=a%>%select(-cod)
+  }
+  else if (criterio=="peores"){
+    a=t(apply(matriz,2, Inferencia))
+    a=as.data.frame(a)
+    a=a%>%arrange(V1)%>%head(n)
+    a=cbind(a,cod=factor(row.names(a)))
+    dptos=a%>%inner_join(departamentos, by=c("cod"="Codigo"))%>%select(Nombre)
+    rownames(a)=unlist(dptos)
+    a=a%>%select(-cod)
+  }
+  else {stop("Ingrese un criterio entre: 'mejores' o 'peores")}
+  
+  kable(round(a,3),
+        col.names = c("Estimación", "CV","L. Inf","L. Sup"),
+        caption=paste("Top", n, "departamentos con", criterio,"puntajes promedio de matemáticas"))%>%
+    column_spec(1, bold = TRUE)%>%row_spec(0, bold = TRUE)
+  
+} #Kable de tops
+
+indicadora_cluster <- function(cluster1, cluster2) {
+  ifelse(cluster1 == cluster2, 1, 0)} #Para hallar la probabilidad de que dos deptos pertenezcan a un mismo grupo
+
+```
+
+```{r, echo=FALSE, warning=FALSE}
+#Hiperparámetros
+mu0=50
+k0=1
+nu0=1
+s20=10
+
+#numero de iteraciones
+B <- 10000
+set.seed(1234)
+
+#Iniciar Montecarlo
+for (t in 1:9) {
+  i=14+t
+  c=est_suf(get(paste0("sb_20",i)))
+  a=MC(c$yb,c$s2,c$nt)
+  assign(paste0("theta_", i), as.data.frame(a$theta))
+  assign(paste0("sigma2_", i), as.data.frame(a$sigma2))
+}
+
+rm(a)
+rm(c)
+
+#Guardar las simulaciones
+
+#for (t in 1:9) {
+#  i=14+t
+  #write.csv(get(paste0("theta_",i)),paste0("theta_",i,".csv"), row.names = FALSE)
+#  write.csv(get(paste0("sigma2_",i)),paste0("sigma2_",i,".csv"), row.names = FALSE)
+#}
+ 
+#Cargar las simulaciones
+ 
+
+
+```
+
+\newpage
+
+# **Introducción**
+
+
+La Prueba Saber 11 es un examen estandarizado diseñado para evaluar las
+competencias de los estudiantes que están a punto de finalizar la
+educación media. Esta prueba se aplica semestralmente a lo largo de todo
+el territorio nacional con el porpósito de supervisar la calidad de la
+formación en la educación media y servir como requisito para acceder a
+la educación superior. El examen está construido de tal forma que los
+resultados de cada una de las cinco áreas evaluadas (Matemáticas,
+Lectura, Ciencias, Sociales e Inglés) se presenten en una escala
+discreta con limite inferior cero y limite superior 100. Además, se
+espera que los resultados tengan un promedio de 50 y una desviación
+estándar de 10 unidades.
+
+Para este trabajo, el enfoque se centrará en la competencia de
+matemáticas, un área clave que evalua el dominio de conocimientos
+básicos como la aritmética o la geometría, así mismo como habilidades
+esenciales como la interpretación de gráficos y razonamiento
+cuantitativo. Se analizarán los resultados obtenidos en Matemáticas
+recogidos de muestras aleatorias de los 32 departamentos del país y
+Bogotá durante los periodos comprendidos entre 2015 y 2023. Se ajustará
+un modelo Bayesiano Normal-Gamma Inversa-Normal utilizadno los datos
+recolectados de la Prueba Saber 11 con los objetivos de:
+
+1.  Estimar párametros para los puntajes de cada departamento.
+2.  Realizar un análisis comparativo de los resultados.
+3.  Evaluar la evolución temporal de los resultados y analizar las
+    diferencias entre periodos.
+4.  Implementar un procedimiento de agrupamiento Bayesiano.
+
+# **Modelo**
+
+Se considera el siguiente modelo Bayesiano:
+
+1.  **Distribución muestral:** Se supone que las observaciones $y_i$,
+    para $i = 1, \dots, n$, son independientes e idénticamente
+    distribuidas ($\text{iid}$) según una distribución Normal con media
+    $\theta$ y varianza $\sigma^2$: $$
+     y_i \mid \theta, \sigma^2 \stackrel{\text{iid}}{\sim} \textsf{N}(\theta, \sigma^2).
+     $$
+
+2.  **Distribución previa de** $\theta$ condicional en $\sigma^2$: El
+    parámetro $\theta$ sigue una distribución Normal con media $\mu_0$ y
+    varianza $\sigma^2 / \kappa_0$, donde $\kappa_0 > 0$ controla la
+    precisión de la distribución previa: $$
+     \theta \mid \sigma^2 \sim \textsf{N}\left(\mu_0, \frac{\sigma^2}{\kappa_0}\right).
+     $$
+
+3.  **Distribución previa de** $\sigma^2$: El parámetro $\sigma^2$ sigue
+    una distribución Gamma Inversa con parámetro de forma $\nu_0 / 2$ y
+    parámetro de escala $(\nu_0 \sigma_0^2) / 2$. Esta distribución es
+    útil porque es conjugada para la varianza en el caso normal: $$
+     \sigma^2 \sim \textsf{GI}\left(\frac{\nu_0}{2}, \frac{\nu_0 \sigma_0^2}{2}\right).
+     $$
+
+4.  **Distribución posterior:** Bajo el **modelo Normal-Gamma
+    Inversa-Normal** se tiene que la **distribución posterior** de
+    $\boldsymbol{\theta}$ es $$
+    p(\theta,\sigma^2\mid \boldsymbol{y}) = p(\theta\mid \sigma^2, \boldsymbol{y})\,p(\sigma^2\mid \boldsymbol{y})
+    $$ donde:
+
+-   $p(\theta\mid \sigma^2, \boldsymbol{y}) = \textsf{N}\left(\theta\mid\mu_{n}, \frac{\sigma^{2}}{\kappa_{n}}\right)$,
+    donde $$
+      \mu_n = \frac{\kappa_0}{\kappa_n}\mu_0 + \frac{n}{\kappa_n}\bar{y} \qquad\text{con}\qquad \kappa_n = \kappa_0+n\,,
+      $$
+
+-   $p(\sigma^2\mid \boldsymbol{y}) = \textsf{GI}\left(\sigma^2\mid\frac{\nu_n}{2},\frac{\nu_n\,\sigma^2_n}{2}\right)$,
+    donde $$
+      \nu_n = \nu_0+n\qquad\text{y}\qquad \nu_{n}\sigma_{n}^{2} = \nu_{0} \sigma_{0}^{2}+(n-1) s^{2}+n \frac{\kappa_{0}}{\kappa_{n}}\left(\bar{y}-\mu_{0}\right)^2\,,
+      $$
+
+Este modelo se ajustará de forma independiente para cada departamento en
+cada período de tiempo, utilizando los hiperparámetros $\mu_0=50$,
+$\kappa_0=1$, $\nu_0=1$ y $\sigma_0^2=10^2$, mediante simulaciones de
+Monte Carlo con $B=10000$ iteraciones.
+
+# **Preguntas**
+
+1.  Para Bogotá en 2023-2 ($t=9$), calcule la media posterior, el
+    coeficiente de variación posterior y el intervalo de credibilidad al
+    95% de confianza para la media $\theta$, la desviación estándar
+    $\sigma$ y el coeficiente de variación
+    $\zeta=100\,\frac{\sigma}{|\theta|}\%$. Reporte los resultados
+    tabularmente.
+
+```{r, echo=FALSE, warning=FALSE}
+kable(
+  round(t(apply(theta_23 %>% select('11'), 2, Inferencia)), 3),
+  col.names = c("\\textbf{Estimación}", "\\textbf{CV}","\\textbf{L. Inf}","\\textbf{L. Sup}"),
+      caption="Inferencia sobre el puntaje promedio de Matemáticas de Bogotá para el periodo de 2023-2",
+      row.names = FALSE)
+
+
+kable(round(t(apply(sqrt(sigma2_23%>%select('11')), 2, Inferencia)),3),
+      col.names = c("\\textbf{Estimación}", "\\textbf{CV}","\\textbf{L. Inf}","\\textbf{L. Sup}"),
+      caption="Inferencia sobre la desviación estandar del puntaje promedio de Matemáticas de Bogotá para el periodod de 2023-2",
+      row.names = FALSE)
+
+kable(round(t(apply(100*sqrt(sigma2_23%>%select('11'))/abs(theta_23%>%select('11')), 2, Inferencia)),3),
+      col.names = c("\\textbf{Estimación}", "\\textbf{CV}","\\textbf{L. Inf}","\\textbf{L. Sup}"),
+      caption="Inferencia sobre el coeficiente de variación del puntaje promedio de Matemáticas de Bogotá para el periodo de 2023-2",
+      row.names = FALSE)
+
+```
+
+2.  En 2023-2 ($t=9$), elabore el ranking de los cinco departamentos con
+    mejores calificaciones promedio. Para cada uno de estos
+    departamentos calcule la media posterior, el coeficiente de
+    variación posterior y el intervalo de credibilidad al 95% de
+    confianza para la media $\theta$. Reporte los resultados
+    tabularmente. Además, genere una visualización de estos cinco
+    departamentos mediante un mapa de Colombia que utilice una escala de
+    colores adecuada para representar la media posterior de la media
+    $\theta$.
+
+```{r, echo=FALSE, warning=FALSE}
+top_punt(theta_23,5,criterio = "mejores")
+
+```
+
+```{r, echo=FALSE, warning=FALSE}
+#Sirve para todos los mapas 
+shp <- sf::st_read("MGN_DPTO_POLITICO.shp", quiet = T)
+colnames(shp)[1]="DPTO"
+shp$DPTO_CNMBR[23]=paste(str_wrap("SAN ANDRÉS", width = 3), collapse = "\n")
+
+#Para graficar mar y fronteras
+
+mundoshp <- st_read("admin00.shp",quiet=TRUE)
+mundocol <- mundoshp %>% 
+  filter(CNTRY_NAME %in% c("Peru","Brazil","Venezuela","Ecuador","Panama"))
+box=st_bbox(shp)
+
+#Para representar el top 5 mejores
+dptos=cbind(cod=colnames(theta_23),mean=as.numeric(colMeans(theta_23)))
+dptos=as.data.frame(dptos)
+dptos$cod=as.character(dptos$cod)
+dptos$cod[dptos$cod=="5"]="05"
+dptos$cod[dptos$cod=="8"]="08"
+colnames(dptos) <- c("DPTO","Media")
+dptos <- dptos %>% mutate(Media = as.numeric(Media))
+dptos <- dptos %>%
+  mutate(
+    Top5 = ifelse(rank(-Media) <= 5, Media, NA)  
+  ) #Para distinguir los 5 mejores
+dptos <- dptos %>%
+  mutate(
+    Top5p = ifelse(rank(Media) <= 5, Media, NA)  
+  ) #Para distinguir los 5 peores
+
+```
+
+```{r, fig.width=5, fig.height=7,echo=FALSE, warning=FALSE,dpi=72, fig.align='center'}
+#Mapa de los Top 5 mejores
+
+inner_join(x = shp, y = dptos, by = c("DPTO")) %>% 
+  select(DPTO, Media, geometry, Top5, DPTO_CNMBR) %>%
+  ggplot() +
+  geom_sf(data=mundocol, col="white")+
+  geom_sf(aes(fill = Top5), size = 0.125, color = "gray30", linetype="solid") +
+  coord_sf(xlim=c(box$xmin,box$xmax),ylim=c(box$ymin,box$ymax),expand=FALSE) +
+  #geom_sf_text(aes(label = Media), size = 3, color = "black") + # Etiquetas con Media
+  scale_fill_gradient(
+    low = "#008B00",   # Color claro para valores bajos
+    high = "#7FFF00",   # Color oscuro para valores altos
+    na.value = "gray92", # Color para departamentos fuera del Top5
+    n.breaks=5
+  )  +
+  annotate("text", x=c(-74.5,-68,-78,-69,-78.5), y=c(-2.5,0,-1,9,9), colour="blue",
+           label=c("Perú","Brasil","Ecuador","Venezuela","Panamá")) +
+  geom_sf_text(aes(label=ifelse(!is.na(Top5),DPTO_CNMBR,"")),col="black",
+               fontface="bold",size=3,fun.geometry=function(x) sf::st_centroid(x))+
+  labs(x="Longitud",y="Latitud",title="Colombia",fill="Puntaje \n promedio")+
+  theme(
+    plot.title = element_text(hjust = 0.5,),
+    panel.background=element_rect(fill="lightblue")
+  )
+```
+
+```{=tex}
+\begin{center}
+Figura 1: Top 5 departamentos con mejores puntajes promedio de matematicas en 2023-2.
+\end{center}
+```
+3.  En 2023-2 ($t=9$), elabore el ranking de los cinco departamentos con
+    peores calificaciones promedio. Para cada uno de estos departamentos
+    calcule la media posterior, el coeficiente de variación posterior y
+    el intervalo de credibilidad al 95% de confianza para la media
+    $\theta$. Reporte los resultados tabularmente. Además, genere una
+    visualización de estos cinco departamentos mediante un mapa de
+    Colombia que utilice una escala de colores adecuada para representar
+    la media posterior de la media $\theta$.
+
+```{r, echo=FALSE, warning=FALSE}
+top_punt(theta_23,5,criterio = "peores")
+```
+
+```{r, fig.width=5, fig.height=7, fig.align='center', echo=FALSE, warning=FALSE, dpi=72}
+#Mapa de los 5 peores
+map_data <- inner_join(x = shp, y = dptos, by = c("DPTO"))
+inner_join(x = shp, y = dptos, by = c("DPTO")) %>% 
+  select(DPTO, Media, geometry, Top5p, DPTO_CNMBR) %>%
+  ggplot() +
+  geom_sf(data=mundocol, col="white")+
+  geom_sf(aes(fill = Top5p), size = 0.125, color = "gray30", linetype="solid") +
+  coord_sf(xlim=c(-83,box$xmax),ylim=c(box$ymin,14),expand=FALSE) +
+  #geom_sf_text(aes(label = Media), size = 3, color = "black") + # Etiquetas con Media
+  scale_fill_gradient(
+    low = "#8B0000",   # Color oscruo para valores bajos
+    high = "#FF0000",   # Color claro para valores altos
+    na.value = "gray92", # Color para departamentos fuera del Top5
+    n.breaks=5
+  )  +
+  annotate("text", x=c(-74.5,-68,-78,-69,-78.5), y=c(-2.5,0,-1,9,9), colour="blue",
+           label=c("Perú","Brasil","Ecuador","Venezuela","Panamá")) +
+  geom_sf_text(aes(label=ifelse(!is.na(Top5p),DPTO_CNMBR,"")),col="black",
+               fontface="bold",size=3,fun.geometry=function(x) sf::st_centroid(x))+
+  labs(x="Longitud",y="Latitud",title="Colombia",fill="Puntaje \n promedio")+
+  theme(
+    plot.title = element_text(hjust = 0.5,),
+    panel.background=element_rect(fill="lightblue")
+  )
+```
+
+```{=tex}
+\begin{center}
+Figura 2: Top 5 departamentos con peores puntajes promedio de matematicas en 2023-2.
+\end{center}
+```
+4.  Para Bogotá en todos los periodos ($t=1,\ldots,9$), calcule la media
+    posterior y el intervalo de credibilidad al 95% de confianza para la
+    media $\theta$. Presente los resultados mediante una visualización
+    que muestre simultáneamente las medias posteriores y los intervalos
+    de credibilidad.
+
+```{r, echo=FALSE, warning=FALSE}
+bog_medias=matrix(NA,nrow=9,ncol=4)
+bog_cvs=matrix(NA,nrow=9,ncol=4)
+row_names=character(length=9)
+
+for (t in 1:9){
+  i=14+t
+  bog=get(paste0("theta_",i))%>%select("11")
+  bog2=get(paste0("sigma2_",i))%>%select("11")
+  bog_medias[t,]=t(apply(bog, 2, Inferencia))
+  bog_cvs[t,]=t(apply(100*sqrt(bog2)/abs(bog), 2, Inferencia))
+  row_names[t]=paste0("20",i,"-2")
+}
+
+rownames(bog_medias)=row_names
+rownames(bog_cvs)=row_names
+bog_medias=as.data.frame(bog_medias)
+bog_cvs=as.data.frame(bog_cvs)
+
+ranking=order(bog_medias$V1)
+colo=rep(2,9)
+colo[which(bog_medias[,3]>50)] <- 1
+colo[which(bog_medias[,4]<50)] <- 3
+colo <- c("royalblue","black","red")[colo]
+m=9
+
+
+
+
+
+kable(round(bog_medias,3),
+      col.names = c("Estimación", "CV","L. Inf","L. Sup"),
+      caption="Inferencia sobre el puntaje promedio de Bogotá a través del tiempo")%>%column_spec(1, bold = TRUE)%>%row_spec(0, bold = TRUE)
+
+
+
+
+
+```
+
+```{r, fig.width=5, fig.height=3, fig.align='center', echo=FALSE, warning=FALSE}
+ggplot(cbind(bog_medias, Periodo= rownames(bog_medias)),
+       aes(x = Periodo, y = V1)) +
+  #geom_line(color = "blue", size = 1) +  # Línea de las medias
+  geom_point(color = "blue", size = 2) + # Puntos en las medias
+  geom_errorbar(aes(ymin = V3, ymax = V4), width = 0.2, color = "red") + # Barras de error
+  theme_minimal() +
+  labs(
+    title = "",
+    x = "Periodo",
+    y = "Media posterior"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14),
+    axis.text.x = element_text(angle = 45, hjust = 1)  # Eje X inclinado para claridad
+  )
+
+
+
+```
+
+Figura 3: Media posterior de Bogotá y sus intervalos de credibilidad del
+95% a través del tiempo.
+
+5.  Para Bogotá en todos los periodos ($t=1,\ldots,9$), calcule la media
+    posterior y el intervalo de credibilidad al 95% de confianza para el
+    coeficiente de variación $\zeta$. Presente los resultados mediante
+    una visualización que muestre simultáneamente las medias posteriores
+    y los intervalos de credibilidad.
+
+```{r, echo=FALSE, warning=FALSE}
+
+kable(round(bog_cvs,3),
+      col.names = c("Estimación", "CV","L. Inf","L. Sup"),
+      caption="Inferencia sobre el coeficiente de variación del puntaje promedio de Bogotá a través del tiempo")%>%column_spec(1, bold = TRUE)%>%row_spec(0, bold = TRUE)
+```
+
+```{r, fig.width=5, fig.height=5, fig.align='center', echo=FALSE, warning=FALSE}
+m=9
+par(mfrow = c(1,1), mar = c(6.7,4,3,1), mgp = c(2.5,.75,0))
+plot (1:m, bog_cvs$V1, xlab = "", ylab = "CV(%)", pch = 16, type = "b", col = 4, xlim = c(1,m), ylim = c(0,30), cex = 0.75, cex.axis = 0.75, xaxt = "n", main = "Coeficiente de Variación del puntaje \n en matemáticas para Bogotá \n ")
+axis(side = 1, at = 1:m, labels = F)
+text(x = (1:m) + 0.3, y = par("usr")[3] - 1.5, labels = rownames(bog_cvs), srt = 70, pos = 2, xpd = T, cex = 0.75)
+abline(v = 1:m, col = "gray95", lwd = 1, lty = 3)
+abline(h = 5, lty = 2, col = 3)
+abline(h = 10, lty = 2, col = "#FFA500")
+abline(h = 15, lty = 2, col = 2)
+
+for (i in 1:9) {
+  lines(c(i, i), c(bog_cvs$V3[i] , bog_cvs$V4[i] ), col = "blue", lwd = 1.5)
+}
+```
+
+Figura 4: Estimación del coeficiente de variación para Bogotá y sus
+intervalos de credibilidad del 95% a través del tiempo.
+
+6.  Considere el parámetro $\eta_{t,k} = \theta_t-\theta_{t-k}$, para
+    algún $k=1,\ldots,t-1$. Para Bogotá, calcule la media posterior y el
+    intervalo de credibilidad al 95% de confianza para $\eta_{9,k}$,
+    para cada $k=1,\ldots,8$. Presente los resultados mediante una
+    visualización que muestre simultáneamente las medias posteriores y
+    los intervalos de credibilidad.
+
+```{r, echo=FALSE,warning=FALSE}
+eta=matrix(NA,ncol = 4,nrow=8)
+row_names=character(length = 8)
+bog23=theta_23%>%select("11")
+for (t in 1:8){
+  i=23-t
+  bogi=get(paste0("theta_",i))%>%select("11")
+  eta[t,]=t(apply(bog23-bogi,2,Inferencia))
+  row_names[t]=paste0("$\\eta_{9,",t,"}$")
+}
+
+rownames(eta)=row_names
+eta=as.data.frame(eta)
+
+kable(eta[,-2], col.names = c("\\textbf{Estimación}","\\textbf{LI}","\\textbf{LS}"))
+```
+
+```{r, fig.width=5, fig.height=3, fig.align='center', echo=FALSE, warning=FALSE}
+labs=c(expression(theta[9]-theta[8]),expression(theta[9]-theta[7]),
+  expression(theta[9]-theta[6]),expression(theta[9]-theta[5]),
+  expression(theta[9]-theta[4]),expression(theta[9]-theta[3]),
+  expression(theta[9]-theta[2]),expression(theta[9]-theta[1]))
+ggplot(cbind(eta, Periodo= 1:8),
+       aes(x = Periodo, y = V1)) +
+  #geom_line(color = "blue", size = 1) +  # Línea de las medias
+  geom_point(color = "blue", size = 2) + # Puntos en las medias
+  geom_errorbar(aes(ymin = V3, ymax = V4), width = 0.2, color = "red") + # Barras de error
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.8)+
+  theme_minimal() +
+  labs(
+    title = "",
+    x = "",
+    y = expression(eta["9, k"])
+  ) +
+  scale_x_continuous(breaks = 1:8, labels = labs) + 
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14),
+    axis.text.x = element_text(angle = 45, hjust = 1)  # Eje X inclinado para claridad
+  )
+```
+
+Figura 5: Diferencia de la media posterior de 2023-2 con respecto a los
+8 periodos anteriores e intervalos de credibilidad (95%).
+
+7.  Considere el siguiente procedimiento Bayesiano de agrupamiento
+    (clustering):
+
+    ```{=tex}
+    \begin{enumerate}
+     \item \textbf{Construcción de la matriz \(\Omega^{(b)}\):}
+     \begin{itemize}
+         \item Para cada iteración de las muestras de Monte Carlo (\(b=1, \ldots, B\)), construya la matriz:
+         \[
+         \Omega^{(b)} =
+         \begin{bmatrix}
+         \theta_1^{(b)} & \sigma_1^{(b)} \\
+         \theta_2^{(b)} & \sigma_2^{(b)} \\
+         \vdots         & \vdots         \\
+         \theta_{m}^{(b)} & \sigma_{m}^{(b)}
+         \end{bmatrix},
+         \]
+         donde:
+         \begin{itemize}
+             \item \(\theta_i^{(b)}\): Media estimada para el departamento \(i\) en la iteración \(b\).
+             \item \(\sigma_i^{(b)}\): Desviación estándar estimada para el departamento \(i\) en la iteración \(b\).
+             \item \(m = 33\): Número total de departamentos, incluyendo Bogotá.
+         \end{itemize}
+     \end{itemize}
+
+     \item \textbf{Agrupamiento con \(k\)-medias:}
+     \begin{itemize}
+         \item En cada iteración \(b\), utilice la matriz \(\Omega^{(b)}\) para aplicar el algoritmo de segmentación \(k\)-medias mediante la función \texttt{kmeans} de R.
+         \item Este procedimiento agrupa los departamentos en función de los valores de \(\theta_i^{(b)}\) y \(\sigma_i^{(b)}\), para \(i = 1, \ldots, m\).
+         \item Como resultado, obtenga las etiquetas de grupo \(\xi_1^{(b)}, \ldots, \xi_{m}^{(b)}\), donde \(\xi_i^{(b)} = k\) indica que el departamento \(i\) pertenece al grupo \(k\) en la iteración \(b\).
+     \end{itemize}
+
+     \item \textbf{Construcción de la matriz de similitudes \(\mathbf{A}\):}
+     \begin{itemize}
+         \item Con las etiquetas de grupo \(\xi_1^{(b)}, \ldots, \xi_{m}^{(b)}\) generadas en cada iteración, construya la matriz de similitudes de dimensión \(m \times m\), denotada como \(\mathbf{A} = [a_{ij}]\), donde:
+         \[
+         a_{ij} = \textsf{P}(\xi_i = \xi_j \mid \text{datos}) = \frac{1}{B} \sum_{b=1}^B I(\xi_i^{(b)} = \xi_j^{(b)}), \quad i, j = 1, \ldots, m.
+         \]
+         \item Aquí:
+         \begin{itemize}
+             \item \(I(\cdot)\): Función indicadora que toma el valor 1 si los departamentos \(i\) y \(j\) pertenecen al mismo grupo en la iteración \(b\), y 0 en caso contrario.
+             \item \(a_{ij}\): Representa la probabilidad posterior de que los departamentos \(i\) y \(j\) pertenezcan al mismo grupo.
+         \end{itemize}
+         \item Propiedades de \(\mathbf{A}\):
+         \begin{itemize}
+             \item Es una matriz simétrica.
+             \item Todos los elementos de la diagonal principal son iguales a 1.
+         \end{itemize}
+     \end{itemize}
+
+     \item \textbf{Estimación puntual de la segmentación:}
+     \begin{itemize}
+         \item Utilice la matriz de similitudes \(\mathbf{A}\) como entrada para la función \texttt{Mclust} de la librería \texttt{mclust} en R.
+         \item Esta función genera una segmentación final (estimación puntual) teniendo en cuenta las probabilidades contenidas en la matriz \(\mathbf{A}\).
+     \end{itemize}
+    \end{enumerate}
+    ```
+
+Para todos los períodos ($t=1, \ldots, 9$), aplique el procedimiento
+descrito previamente para obtener una segmentación de los 33
+departamentos. Para cada período, presentar los resultados mediante un
+mapa de Colombia, utilizando una escala de colores adecuada en la que
+los departamentos que pertenezcan al mismo grupo se representen con el
+mismo color. La visualización debe consistir de 9 paneles dispuestos en
+un arreglo de $3 \times 3$, todos en una misma página, para facilitar la
+comparación entre períodos.
+
+```{r, echo=FALSE, warning=FALSE}
+#Para realizar los mapas:
+
+#El agrupamiento y calculo de las matrices de similitud:
+
+#for (t in 1:9) {
+#  i=14+t
+#  theta <- get(paste0("theta_", i))
+#  sigma2 <- get(paste0("sigma2_", i))
+  
+#  cl <- clust(theta, sigma2, 5)
+  
+#  indicadora_todas <- lapply(cl, function(clusters) {
+#    outer(clusters, clusters, indicadora_cluster)
+#  })
+  
+  # Calcular la matriz de similitudes
+#  f <- (1 / B) * Reduce("+", indicadora_todas)
+  
+  # Guardar la matriz en un archivo CSV
+#  write.csv(f, paste0("M", i, ".csv"), row.names = TRUE)
+#}
+
+# Importar las matrices de similitud
+
+for (t in 1:9) {
+  i=14+t
+  file_name <- paste0("M", i, ".csv")
+  
+  assign(
+    paste0("M", i), # Nombre dinámico de la variable
+    read.csv(file_name, header = TRUE, check.names = FALSE, row.names = 1)
+  )
+}
+
+#Para graficos con corrplot
+
+#corrplot(corr = as.matrix(M{i}), col.lim = c(0,1), method = "color", tl.col = "black", tl.cex = 1.4, addgrid.col = "gray90", cl.pos = "n")
+
+
+
+rm(indicadora_todas)
+remove(clasificacion)
+
+```
+
+```{r, fig2, width=14, height=14, echo=FALSE}
+
+knitr::include_graphics("map10.png")
+
+#m10=ggarrange(m1,m2,m3,m4,m5,m6,m7,m8,m9, ncol = 3, nrow = 3)
+#m10 <- readRDS("map10.rds")
+#m10
+
+# Guardar el mapa como un archivo PNG
+#ggsave("map10.png", plot = m10, width = 14, height = 14, dpi = 300)
+
+```
+
+```{=tex}
+\begin{center}
+
+Figura 6: Agrupamiento dado por Mclust a través de los 9 periodos
+
+\end{center}
+```
+8.  Un \textbf{diagrama de Sankey} es una excelente herramienta para
+    visualizar la evolución de un proceso de clustering, ya que puede
+    mostrar cómo los elementos cambian de un grupo a otro a lo largo de
+    diferentes etapas o períodos.
+
+    Representar la evolución del proceso de clustering obtenido en el
+    numeral anterior mediante un diagrama de Sankey, mostrando cómo los
+    elementos se redistribuyen entre los diferentes grupos a lo largo de
+    los periodos.
+
+```{r, fig, width=14, height=14, echo=FALSE, message=FALSE, warning=FALSE}
+# Asignar manualmente los clusters para 2019-2
+
+clusters_2019_manual <- c(
+  1, # Antioquia
+  2, # Atlántico
+  3, # Bogotá
+  3, # Bolívar
+  2, # Boyacá
+  1, # Caldas
+  4, # Caquetá
+  2, # Cauca
+  1, # Cesar
+  2, # Córdoba
+  3, # Cundinamarca
+  2, # Chocó
+  2, # Huila
+  2, # La Guajira
+  3, # Magdalena
+  3, # Meta
+  1, # Nariño
+  3, # Norte de Santander
+  3, # Quindío
+  2, # Risaralda
+  1, # Santander
+  3, # Sucre
+  3, # Tolima
+  1, # Valle del Cauca
+  4, # Arauca
+  2, # Casanare
+  1, # Putumayo
+  5, # San Andrés
+  NA, # Amazonas (sin cluster, NA)
+  5, # Guainía
+  4, # Guaviare
+  4, # Vaupés
+  5  # Vichada
+)
+
+
+# Variables básicas
+T <- 9  # Número de períodos (2015 a 2023)
+m <- nrow(M15)  # Número de departamentos
+k <- 5  # Número de clusters deseados
+
+# Crear matriz para almacenar los resultados de clustering
+clusters_periodos <- matrix(NA, nrow = T, ncol = m)
+
+# Realizar clustering para cada período
+for (t in 1:T) {
+  if (t == 5) { # Específicamente para 2019-2 (quinto período)
+    clusters_periodos[t, ] <- clusters_2019_manual
+  } else {
+    # Asignar la matriz de similitud correspondiente al período
+    A_t <- get(paste0("M", 15 + (t - 1)))  # Selecciona M15, M16, ..., M23
+    mclust_result <- Mclust(as.matrix(A_t), G = k)  # Clustering con Mclust
+    clusters_periodos[t, ] <- mclust_result$classification  # Guardar los clusters
+  }
+}
+
+# Crear tabla de transiciones entre períodos
+transiciones <- data.frame()
+for (t in 1:(T - 1)) {
+  for (i in 1:m) {
+    transiciones <- rbind(transiciones, data.frame(
+      Periodo_Origen = t,
+      Cluster_Origen = clusters_periodos[t, i],
+      Periodo_Destino = t + 1,
+      Cluster_Destino = clusters_periodos[t + 1, i]
+    ))
+  }
+}
+
+# Resumir los flujos entre clusters por período
+flujos <- transiciones %>%
+  group_by(Periodo_Origen, Cluster_Origen, Periodo_Destino, Cluster_Destino) %>%
+  summarise(Flujo = n(), .groups = "drop")
+
+# Crear nodos únicos
+nodos_origen <- flujos %>%
+  select(Periodo_Origen, Cluster_Origen) %>%
+  distinct() %>%
+  mutate(name = paste("P", Periodo_Origen, "C", Cluster_Origen, sep = "-"))
+
+nodos_destino <- flujos %>%
+  select(Periodo_Destino, Cluster_Destino) %>%
+  distinct() %>%
+  mutate(name = paste("P", Periodo_Destino, "C", Cluster_Destino, sep = "-"))
+
+nodos <- bind_rows(
+  nodos_origen %>% rename(Periodo = Periodo_Origen, Cluster = Cluster_Origen),
+  nodos_destino %>% rename(Periodo = Periodo_Destino, Cluster = Cluster_Destino)
+) %>%
+  distinct() %>%
+  mutate(id = row_number() - 1)
+
+# Agregar IDs de origen y destino al flujo
+flujos <- flujos %>%
+  left_join(nodos, by = c("Periodo_Origen" = "Periodo", "Cluster_Origen" = "Cluster")) %>%
+  rename(source = id) %>%
+  left_join(nodos, by = c("Periodo_Destino" = "Periodo", "Cluster_Destino" = "Cluster")) %>%
+  rename(target = id)
+
+# Preparar datos para Sankey
+sankey_links <- flujos %>%
+  select(source, target, value = Flujo)
+
+sankey_nodes <- nodos %>%
+  select(name)
+
+# Crear diagrama de Sankey
+#sankey=sankeyNetwork(
+#  Links = sankey_links,
+#  Nodes = sankey_nodes,
+#  Source = "source",
+#  Target = "target",
+#  Value = "value",
+#  NodeID = "name",
+#  units = "Departamentos",
+#  fontSize = 12,
+#  nodeWidth = 30
+#)
+
+#saveWidget(sankey, "sankey.html", selfcontained = TRUE)
+#webshot("sankey.html", "sankey.png", vwidth = 800, vheight = 600)
+knitr::include_graphics("sankey.png")
+```
+
+```{=tex}
+\begin{center}
+Figura 7:Diagrama de Sankey
+\end{center}
+```
+9.  Interprete \textbf{todos} los resultados obtenidos (máximo dos mil
+    palabras).
+
+**Punto 1.** El análisis, a traves de la inferencia bayesiana para
+Bogotá en el período 2023-2 proporciona información clave sobre el
+rendimiento académico en Matemáticas. La media posterior se estima en
+**55.082 puntos**, con un intervalo de credibilidad al 95% que varía
+entre **54.239** y **55.925**. Esto indica que Bogotá supera el puntaje
+promedio esperado de la prueba, diseñado para ser **50 puntos**. Este
+resultado sugiere que el desempeño académico promedio de los estudiantes
+de Bogotá es significativamente superior al estándar establecido.
+
+La desviación estándar ($\sigma$), estimada en **11.994**, refleja la
+dispersión de los puntajes individuales alrededor de la media. Este
+valor es ligeramente mayor que la desviación estándar esperada de la
+prueba, que es de **10 puntos**, lo que indica una mayor variabilidad en
+los resultados de Bogotá en comparación con el diseño inicial de la
+prueba, lo cual tambien se evidencia en el intervalo de credibilidad
+para $\sigma$, que va desde **11.424** hasta **12.607**.
+
+El coeficiente de variación ($\zeta$) del **21.776%** cuantifica la
+relación entre la desviación estándar y la media, lo que permite
+interpretar la dispersión relativa de los datos. Con un intervalo de
+credibilidad entre **20.673%** y **22.963%**, Bogotá muestra una
+dispersión moderada en relación con su promedio, sugiriendo que, aunque
+el desempeño es alto, existe una variabilidad relativa que merece
+atención para identificar áreas de mejora.
+
+En conjunto, los resultados indican que Bogotá tiene un desempeño
+promedio sólido en Matemáticas, superando el estándar esperado de la
+prueba tanto en promedio como en rango de confianza. Sin embargo, la
+desviación estándar mayor a la esperada sugiere la posibilidad de
+disparidades dentro del grupo de estudiantes, lo que podría ser
+atribuido a diferencias en factores como acceso a recursos educativos,
+infraestructura o preparación docente. Reducir esta variabilidad podría
+ser un objetivo clave para lograr un sistema educativo más equitativo y
+consistente.
+
+**Punto 2.**
+
+En el período 2023-2 ($t=9$), se identificaron los cinco departamentos
+con los mejores puntajes promedio en la prueba de Matemáticas. El
+departamento con el mejor desempeño fue **Santander**, con una media
+posterior estimada en **55.403 puntos**, seguido por **Bogotá, D.C.**
+con **55.082 puntos**, **Huila** con **54.678 puntos**, **Boyacá** con
+**54.025 puntos**, y **Cundinamarca** con **53.848 puntos**. Todos ellos
+presentan puntajes superiores al promedio esperado de la prueba,
+diseñado en **50 puntos**, lo que refleja un rendimiento sobresaliente
+en comparación con el estándar nacional.
+
+Es importante destacar que estos departamentos se encuentran ubicados
+principalmente en la región central del país. Este patrón geográfico
+sugiere que las áreas cercanas al núcleo económico y político de
+Colombia, donde se encuentran Bogotá y Cundinamarca, podrían
+beneficiarse de mejores recursos educativos, infraestructura, y
+políticas públicas más eficaces en la promoción de la educación.
+
+En términos de variabilidad relativa, representada por el coeficiente de
+variación (CV), los cinco departamentos muestran una dispersión baja, lo
+que indica una alta consistencia en los puntajes dentro de cada región.
+**Bogotá, D.C.** exhibe la mayor estabilidad relativa con un CV de
+**0.008**, mientras que **Huila** presenta una dispersión ligeramente
+mayor, con un CV de **0.021**.
+
+Los intervalos de credibilidad al 95% para la media posterior son
+estrechos para todos los departamentos, lo que denota un alto nivel de
+certeza en las estimaciones. Estos resultados sugieren que los cinco
+departamentos destacados tienen un desempeño consistente y sólido en la
+prueba de Matemáticas. Sin embargo, se resalta la necesidad de entender
+las ventajas de la región central y evaluar cómo podrían extenderse
+estas condiciones favorables a otras áreas del país para reducir las
+brechas educativas.
+
+**Punto 3.**
+
+En el período 2023-2 ($t=9$), se identificaron los cinco departamentos
+con los puntajes promedio más bajos en la prueba de Matemáticas. El
+departamento con el desempeño más bajo fue **Vichada**, con una media
+posterior estimada en **38.024 puntos**, seguido por **Chocó** con
+**38.376 puntos**, **Amazonas** con **45.319 puntos**, **San Andrés**
+con **45.454 puntos**, y **La Guajira** con **45.851 puntos**. Todos
+ellos presentan puntajes significativamente inferiores al promedio
+esperado de la prueba, diseñado en **50 puntos**, lo que evidencia
+desafíos importantes en el desempeño académico de estas regiones.
+
+Es importante destacar que estos departamentos se encuentran en zonas
+geográficamente alejadas y dispersas del territorio nacional, como la
+Amazonía, los Llanos Orientales, el Caribe insular y el Pacífico
+colombiano. Estas áreas suelen enfrentar limitaciones estructurales,
+como el acceso reducido a recursos educativos, infraestructuras
+escolares insuficientes, y menor presencia de programas de apoyo
+pedagógico. Esto podría contribuir a las brechas significativas
+observadas en los resultados.
+
+En términos de variabilidad relativa, representada por el coeficiente de
+variación (CV), los resultados muestran diferencias notables entre los
+departamentos. **Chocó** exhibe la mayor estabilidad relativa con un CV
+de **0.037**, mientras que **Vichada** presenta la mayor dispersión
+relativa, con un CV de **0.147**. Esto último indica una mayor
+heterogeneidad en los puntajes de los estudiantes de Vichada,
+posiblemente debido a desigualdades internas en el acceso a recursos
+educativos.
+
+Estos resultados subrayan la necesidad de implementar políticas públicas
+diferenciadas para las regiones más alejadas y vulnerables del país,
+buscando reducir las barreras geográficas y mejorar la equidad educativa
+en todas las zonas del territorio nacional.
+
+**Punto 4.**
+
+El análisis de la evolución del puntaje promedio en Matemáticas para
+Bogotá a lo largo de los períodos 2015-2 a 2023-2 muestra un rendimiento
+consistentemente superior al promedio esperado de la prueba. En todos
+los períodos, la media posterior ($\theta$) se mantiene por encima de
+este estándar, oscilando entre **54.096** (2017-2) y **55.625**
+(2016-2). Esto refleja un desempeño sólido y sostenido en la capital.
+
+El coeficiente de variación (CV) para todos los períodos es
+extremadamente bajo, con valores que oscilan entre **0.007** y
+**0.010**, lo que indica una alta consistencia en los puntajes de los
+estudiantes de Bogotá. Este nivel de estabilidad sugiere que las
+diferencias individuales entre los puntajes son mínimas, consolidando la
+capital como una de las regiones con menor dispersión en el desempeño
+académico.
+
+Los intervalos de credibilidad al 95% para la media posterior son
+estrechos, lo que denota un alto nivel de certeza en las estimaciones.
+
+**Punto 5.**
+
+El análisis del coeficiente de variación ($\zeta$) del puntaje promedio
+en Matemáticas para Bogotá a lo largo de los períodos 2015-2 a 2023-2
+muestra estimaciones que oscilan entre **17.929%** (2020-2) y
+**22.362%** (2015-2). Estos valores se mantienen cercanos al coeficiente
+de variación esperado de **20%**, diseñado para la prueba, lo que indica
+una estabilidad en la dispersión relativa de los puntajes en Bogotá.
+
+Según los criterios del DANE, un coeficiente de variación se interpreta
+de la siguiente manera:
+
+-   **Hasta el 7%**: la estimación es **precisa**.
+-   **Entre 7% y 15%**: la estimación tiene una **variación moderada**.
+-   **Mayor al 15%**: la estimación presenta una **alta variabilidad**.
+
+Aplicando estos criterios, los valores de $\zeta$ observados en Bogotá
+se clasifican dentro de la categoría de **alta variabilidad**. Es
+notable que, aunque los puntajes promedio de Bogotá superan
+consistentemente el estándar nacional de **50 puntos**, la dispersión
+relativa de los resultados es significativa.
+
+El período **2020-2** presenta el coeficiente de variación más bajo con
+**17.929%**, coincidiendo con el año de mayor impacto de la pandemia del
+COVID-19. Esta reducción en la variabilidad podría reflejar una
+homogeneización en los resultados, posiblemente debido a la transición a
+la educación virtual, la uniformidad en las condiciones de aprendizaje
+durante ese período y el hecho de que en ese año, debido a esta
+emergencia sanitaria se realizó la prueba en una sola sesión, a
+diferencia de los otros años en los que la prueba se realizaba en 2
+sesiones.
+
+**Punto 6.**
+
+Este análisis permite evaluar la evolución de los puntajes promedio a lo
+largo del tiempo, considerando las diferencias respecto al periodo más
+reciente.
+
+-   **Estimaciones positivas y negativas:**
+    -   Para los periodos más cercanos ($\eta_{9,1}$ y $\eta_{9,2}$),
+        las estimaciones son **positivas** (0.432 y 0.736,
+        respectivamente). Esto indica que los puntajes promedio en
+        2023-2 fueron mayores en comparación con 2022-2 y 2021-2.
+    -   En cambio, para periodos más alejados ($\eta_{9,3}$,
+        $\eta_{9,5}$ y $\eta_{9,7}$), las estimaciones son
+        **negativas**, lo que sugiere que los puntajes en 2023-2 fueron
+        más bajos respecto a esos años.
+-   **Intervalos de credibilidad amplios:**
+    -   Los intervalos de credibilidad al 95% muestran que para varios
+        periodos (por ejemplo, $\eta_{9,3}$ y $\eta_{9,5}$), incluyen
+        tanto valores positivos como negativos, indicando una alta
+        incertidumbre respecto a la dirección del cambio. Esto sugiere
+        que las diferencias podrían no ser estadísticamente
+        significativas.
+-   **Periodos con cambios notables:**
+    -   $\eta_{9,6}$ muestra la mayor estimación positiva (0.985), lo
+        que podría reflejar un cambio significativo hacia un desempeño
+        más alto en 2023-2 comparado con 2017-2.
+    -   Por otro lado, $\eta_{9,7}$ presenta una diferencia negativa
+        (-0.544), indicando un desempeño inferior en comparación con
+        2016-2.
+-   **Tendencia general:**
+    -   Aunque hay fluctuaciones, no se observa una tendencia clara de
+        mejora o deterioro sistemático en los puntajes promedio. Esto
+        podría estar relacionado con variaciones en factores educativos,
+        socioeconómicos o metodológicos en los periodos evaluados.
+
+En resumen, el análisis de $\eta_{9,k}$ evidencia que, si bien Bogotá
+mantiene cierta estabilidad en su desempeño, los cambios respecto a
+periodos anteriores no son siempre consistentes ni estadísticamente
+significativos. Este comportamiento subraya la importancia de continuar
+monitoreando las tendencias a largo plazo para identificar patrones
+relevantes en el rendimiento académico.
+
+**Punto 7.**
+
+-   **Custer 1:** Este grupo incluye departamentos del suroeste del
+    país, como Nariño, Cauca y Valle del Cauca, en varios períodos.
+    Dicho comportamiento es una señal de similitud en el comportamiento
+    del puntaje promedio y su variabilidad.
+
+-   **Cluster 2:** Aparece predominantemente en el norte y centro del
+    país, incluyendo departamentos como Santander, Antioquia y
+    Atlántico. Estos departamentos se caracterizan por ser centros
+    urbanos importantes y zonas económicas más desarrolladas, lo cual
+    podría reflejar mejores condiciones educativas y socioeconómicas que
+    resultan en mejores puntajes y una menor variabilidad al presentarse
+    mayor cantidad de información.
+
+\-**Cluster 3:** En varios períodos, incluye departamentos del sureste
+amazónico y Orinoquía, como Guainía, Vaupés y Vichada. Al ser estos
+departamentos aislados y con dificultades para el acceso a la educación
+se sospechan puntajes por debajo del promedio y alta variabilidad dada
+la poca información disponible (pocas muestras).
+
+\-**Cluster 4:** Incluye departamentos costeros y del Caribe, como
+Bolívar, Córdoba y Magdalena. En general destaca la diversidad en
+resultados educativos en el Caribe.
+
+\-**Cluster 5:** No presenta un patrón definido, en varios períodos
+agrupa departamentos dispersos, como Amazonas o San Andrés. Estos
+departamentos son excepciones geográficas o administrativas, lo que
+podría influir en su agrupamiento.
+
+También resalta en 2019-2 la no presencia de valores para Amazonas.
+
+**Punto 8.**
+
+Se presentan flujos significativos donde departamentos de un cluster
+migran a varios clusters en el siguiente período. Esto da indicios de
+cambios en las características de los departamentos o fluctuaciones en
+los datos.
+
+Para algunos algunos períodos, un cluster se divide en varios clusters
+en el siguiente período, lo que indica diversificación en las
+características de los departamentos (por ejemplo, cambios en resultados
+de puntajes). Por ejemplo, el Cluster 4 en el período 5 ("P-5-C-4").
+Este cluster se diversifica, enviando departamentos a varios clusters en
+el período 6 ("P-6-C-2", "P-6-C-3", etc.) y para el Cluster 3 en el
+período 7 ("P-7-C-3") se divide y distribuye en tres clusters en el
+período 8 ("P-8-C-2", "P-8-C-4", "P-8-C-5").
+
+El diagrama refleja lo anteriormente mencionado respecto al cluster
+5,pues se evidencia que tienen menos conexiones, lo que podría reflejar
+que los departamentos en ellos tienen características únicas o atípicas.
+
+# **Referencias**
+
+[1] Juan Sosa. \textit{Estadística Bayesiana}. Google Sites, 2024.
+Disponible en:
+\url{https://sites.google.com/view/juansosa/bayesian-statistics}.
+
+[2] Peter Hoff. \textit{A first course in Bayesian statistical methods},
+volumen 580. Springer, 2009.
+
+[3] Schmidt, M. (2008).
+\textit{The sankey diagram in energy and material flow management: part II: methodology and current applications}.
+\textit{Journal of Industrial Ecology, 12}(2), 173--185.
